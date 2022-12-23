@@ -28,3 +28,6 @@ Takeaway:
 - Google app sheets is really useful for banging out simple apps with extremely simple data structures. May use this again in the future if the usecase comes up again.
 - Google app sheets text editor is really not helpful
 - Tailwind css is great but having to rewrite long class strings over and over isn't great, I think this would pair up far better with React or some other component based framework
+
+Sample:
+![image](https://user-images.githubusercontent.com/12545583/209311902-326ee5d7-d824-4d18-96f7-9e13d6bbfade.png)
