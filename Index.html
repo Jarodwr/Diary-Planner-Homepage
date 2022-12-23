@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    const changeSaveDelay = 5000;
+    const loadInterval = 60000;
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const dayAbbr = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    const textAbbr = dayAbbr.concat(["scratch1", "scratch2"]);
+
+    //returned save structure
+    // {["21.01"]: "notes for day", ["scratch1"]: "scratch text"}
+    let saveTimeoutID = undefined;
+    let currentDate = new Date();
+
+    const getDayNumber = (date) => {
+      const start = new Date(date.getFullYear(), 0, 0);
+      const diff = date - start;
+      const oneDay = 1000 * 60 * 60 * 24;
+      const day = Math.floor(diff / oneDay);
+      return day;
+    }
+
+    const getDayInWeek = (date, i) => {
+        const temp = new Date(date);
+        temp.setDate((currentDate.getDate() - currentDate.getDay() + 1 + i))
+        return temp;
+    }
+
+    const load = () => {
+      //don't load if there is a pending save
+      if (saveTimeoutID !== undefined) return;
+
+      //refresh the textareas
+      for (const abbr of textAbbr) {
+        const textAreaElement = document.getElementById(`${abbr}-text`);
+        textAreaElement.value = "";
+        textAreaElement.disabled = true;
+      }
+
+
+      const noteIds = []
+      for (let i = 0; i < dayAbbr.length; i++) {
+        //set the date header to be the correct date
+        const abbr = dayAbbr[i];
+        const dayDateHeader = document.getElementById(`${abbr}-date`);
+
+        const temp = getDayInWeek(currentDate, i);
+        //add the note id to the list of note ids to load
+        noteIds.push({year: temp.getFullYear(), dayNumber: getDayNumber(temp)});
+      }
+      noteIds.push({year: 'scratch', dayNumber: 1})
+      noteIds.push({year: 'scratch', dayNumber: 2})
+
+      //load the data from the spreadsheet
+      google.script.run
+        .withSuccessHandler(res => {
+          //load data into the textareas
+          for (let i = 0; i < noteIds.length; i++) {
+            const abbr = textAbbr[i]
+            const {year, dayNumber} = noteIds[i];
+            const textAreaElement = document.getElementById(`${abbr}-text`);
+            
+            if (res[year] && res[year][dayNumber]) {
+              textAreaElement.value = res[year][dayNumber];
+            }
+            textAreaElement.disabled = false;
+          }
+        })
+        .withFailureHandler(() => {
+          for(const abbr of textAbbr) {
+            const textAreaElement = document.getElementById(`${abbr}-text`);
+            textAreaElement.disabled = false;
+          }
+        })
+        .GetNotes(noteIds);
+    }
+
+    const save = async () => {
+      saveTimeoutID = undefined;
+
+      const notes = []
+      for(let i = 0; i < dayAbbr.length; i++) {
+        const abbr = dayAbbr[i];
+        const textAreaElement = document.getElementById(`${abbr}-text`);
+
+        const temp = getDayInWeek(currentDate, i);
+        //add the note id to the list of note ids to load
+        notes.push({
+          year: temp.getFullYear(), 
+          dayNumber: getDayNumber(temp), 
+          text: textAreaElement.value
+        });
+      }
+
+      notes.push({year: 'scratch', dayNumber: 1, text: document.getElementById(`scratch1-text`).value});
+      notes.push({year: 'scratch', dayNumber: 2, text: document.getElementById(`scratch2-text`).value});
+
+      google.script.run.PutNotes(notes);
+    }
+
+    const populateDateHeaders = () => {
+      const calendarHeaderElement = document.getElementById("calendar-header");
+      const monthYearText = `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+      calendarHeaderElement.innerHTML = monthYearText;
+
+      for (let i = 0; i < dayAbbr.length; i++) {
+        //set the date header to be the correct date
+        const abbr = dayAbbr[i];
+        const dayDateHeader = document.getElementById(`${abbr}-date`);
+        const temp = getDayInWeek(currentDate, i);
+        dayDateHeader.innerHTML = `${temp.getDate()}/${temp.getMonth() + 1}`;
+      }
+    }
+
+    const offsetDateByDaysAndReload = i => {
+      save()
+      currentDate.setDate((currentDate.getDate() + i));
+      populateDateHeaders(currentDate);
+      load()
+    }
+
+    window.onload = () => {
+      populateDateHeaders(currentDate);
+      for (const abbr of textAbbr) {
+        document.getElementById(`${abbr}-text`)
+          .addEventListener('input', () => {
+            if (saveTimeoutID !== undefined) {
+              clearTimeout(saveTimeoutID);
+              saveTimeoutID = undefined;
+            }
+            saveTimeoutID = setTimeout(save, changeSaveDelay);
+          })
+      }
+
+      document
+        .getElementById("prev-btn")
+        .addEventListener("click", () => offsetDateByDaysAndReload(-7));
+
+      document
+        .getElementById("next-btn")
+        .addEventListener("click", () => offsetDateByDaysAndReload(7));
+
+      setInterval(load, loadInterval);
+      load();
+    }
+  </script>
+</head>
+
+<body class="dark:bg-gray-900">
+  <div id="header" class="flex flex-row items-center">
+    <h1 id="calendar-header" class="text-2xl font-bold py-2 mx-2 dark:text-slate-300 w-48"></h1>
+    <button id="prev-btn" class="text-black dark:text-slate-300 mx-2">🠜</button>
+    <button id="next-btn" class="text-black dark:text-slate-300 mx-2">🠞</button>
+  </div>
+  <div class="flex flex-col lg:flex-row">
+    <div class="grow px-2 h-[16rem] lg:h-[32rem] flex flex-col items-stretch">
+      <div class="flex flex-row justify-between mb-1">
+        <h1 id="mon-date" class="text-2xl dark:text-white"></h1>
+        <h1 class="text-2xl text-slate-300">Mon</h1>
+      </div>
+      <textarea id="mon-text"
+        class="grow resize-none text-lg  p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+    </div>
+    <div class="grow px-2 h-[16rem] lg:h-[32rem] flex flex-col items-stretch">
+      <div class="flex flex-row justify-between mb-1">
+        <h1 id="tue-date" class="text-2xl dark:text-white"></h1>
+        <h1 class="text-2xl text-slate-300">Tue</h1>
+      </div>
+      <textarea id="tue-text"
+        class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+    </div>
+    <div class="grow px-2 h-[16rem] lg:h-[32rem] flex flex-col items-stretch">
+      <div class="flex flex-row justify-between mb-1">
+        <h1 id="wed-date" class="text-2xl dark:text-white"></h1>
+        <h1 class="text-2xl text-slate-300">Wed</h1>
+      </div>
+      <textarea id="wed-text"
+        class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+    </div>
+    <div class="grow px-2 h-[16rem] lg:h-[32rem] flex flex-col items-stretch">
+      <div class="flex flex-row justify-between mb-1">
+        <h1 id="thu-date" class="text-2xl dark:text-white"></h1>
+        <h1 class="text-2xl text-slate-300">Thu</h1>
+      </div>
+      <textarea id="thu-text"
+        class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+    </div>
+    <div class="grow px-2 h-[16rem] lg:h-[32rem] flex flex-col items-stretch">
+      <div class="flex flex-row justify-between mb-1">
+        <h1 id="fri-date" class="text-2xl dark:text-white"></h1>
+        <h1 class="text-2xl text-slate-300">Fri</h1>
+      </div>
+      <textarea id="fri-text"
+        class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+    </div>
+    <div class="grow flex flex-col">
+      <div class="grow px-2 h-[16rem] lg:h-[16rem] flex flex-col items-stretch">
+        <div class="flex flex-row justify-between mb-1">
+          <h1 id="sat-date" class="text-2xl dark:text-white"></h1>
+          <h1 class="text-2xl text-slate-300">Sat</h1>
+        </div>
+        <textarea id="sat-text"
+          class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+      </div>
+      <div class="grow px-2 h-[16rem] lg:h-[16rem] flex flex-col items-stretch">
+        <div class="flex flex-row justify-between mb-1">
+          <h1 id="sun-date" class="text-2xl dark:text-white"></h1>
+          <h1 class="text-2xl text-slate-300">Sun</h1>
+        </div>
+        <textarea id="sun-text"
+          class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-col lg:flex-row lg:py-4">
+    <div class="grow px-2 h-[16rem] lg:h-[24rem] flex flex-col items-stretch">
+      <div class="flex flex-row justify-between mb-1">
+        <h1 class="text-2xl dark:text-white">Scratchpad 1</h1>
+      </div>
+      <textarea id="scratch1-text"
+        class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+    </div>
+    <div class="grow px-2 h-[16rem] lg:h-[24rem] flex flex-col items-stretch">
+      <div class="flex flex-row justify-between mb-1">
+        <h1 class="text-2xl dark:text-white">Scratchpad 2</h1>
+      </div>
+      <textarea id="scratch2-text"
+        class="grow resize-none text-lg p-1 w-full rounded-md dark:bg-gray-700 dark:text-white"></textarea>
+    </div>
+  </div>
+</body>
+
+</html>
